@@ -1,0 +1,33 @@
+@startuml
+hide footbox
+control "Azure Function" as f
+control "Data Explorer" as dx
+control "SQL" as sql
+control "Redis cache" as r
+control "Web API" as wa
+control "Web page" as wp
+
+f -> dx : raw
+f -> sql : enriched
+f -> r : get current snapshot
+alt if doesn't exist
+f -> r: write the snapshot \nwrite the timestamp
+else else
+r --> f: otherwise fetch the snapshot
+f -> f : compare
+alt if different
+f -> r: refresh the snapshot \nupdate the timestamp
+
+end
+end
+...
+wp -> wa: snapshot timestamp
+wa -> r: get the timestamp
+alt if the same
+wa --> wp: no-change
+else else
+wa -> r: Get the snapshot
+wa --> wp: new snapshot
+wp -> wp: remember timestamp
+end
+@enduml
