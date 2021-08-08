@@ -1,20 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.HttpsPolicy;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
-
+using AlarmApi.Hubs;
 namespace AlarmApi
 {
-    public class Startup
+  public class Startup
     {
         public Startup(IConfiguration configuration)
         {
@@ -26,11 +21,24 @@ namespace AlarmApi
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-
             services.AddControllers();
             services.AddSwaggerGen(c =>
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "AlarmApi", Version = "v1" });
+                c.ResolveConflictingActions(x => x.First());
+            });
+            services.AddSignalR();
+            services.AddCors(options =>
+            {
+                options.AddPolicy("ClientPermission", policy =>
+                {
+                    string allowedOrigins = Configuration["CorsAllowedOrigins"];
+                    Console.WriteLine(allowedOrigins);
+                    policy.AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .WithOrigins(allowedOrigins)
+                        .AllowCredentials();
+                });
             });
         }
 
@@ -46,6 +54,7 @@ namespace AlarmApi
 
             app.UseHttpsRedirection();
 
+            app.UseCors("ClientPermission");
             app.UseRouting();
 
             app.UseAuthorization();
@@ -53,6 +62,7 @@ namespace AlarmApi
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapHub<AlarmHub>("/hubs/messages");
             });
         }
     }

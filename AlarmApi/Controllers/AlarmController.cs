@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using Microsoft.Extensions.Configuration;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
+using AlarmApi.Hubs;
 
 namespace AlarmApi.Controllers
 {
@@ -14,42 +17,69 @@ namespace AlarmApi.Controllers
   public class AlarmController : ControllerBase
   {
     private readonly ILogger<AlarmController> _logger;
+    private readonly IHubContext<AlarmHub, IMessageClient> _alarmHub;
+    private readonly IConfiguration _configuration;
 
-    public AlarmController(ILogger<AlarmController> logger)
+
+    public AlarmController(ILogger<AlarmController> logger,
+      IHubContext<AlarmHub, IMessageClient> alarmHub,
+      IConfiguration configuration)
     {
       _logger = logger;
+      _alarmHub = alarmHub;
+      _configuration = configuration;
+      lazyConnection = CreateConnection();
     }
 
-    private static Lazy<ConnectionMultiplexer> lazyConnection = CreateConnection();
+    private Lazy<ConnectionMultiplexer> lazyConnection;
 
-    public static ConnectionMultiplexer Connection
+    private ConnectionMultiplexer Connection
     {
       get => lazyConnection.Value;
     }
 
-    private static Lazy<ConnectionMultiplexer> CreateConnection()
+    private Lazy<ConnectionMultiplexer> CreateConnection()
     {
       return new Lazy<ConnectionMultiplexer>(() =>
       {
-        string cacheConnection = "127.0.0.1:6379";
+        string cacheConnection = _configuration["RedisConnection"];
         return ConnectionMultiplexer.Connect(cacheConnection);
       });
     }
 
-    public static IDatabase GetDatabase() => Connection.GetDatabase();
+    private IDatabase GetDatabase() => Connection.GetDatabase();
 
-    public static System.Net.EndPoint[] GetEndPoints() => Connection.GetEndPoints();
+    private System.Net.EndPoint[] GetEndPoints() => Connection.GetEndPoints();
 
-    public static IServer GetServer(string host, int port) => Connection.GetServer(host, port);
+    private IServer GetServer(string host, int port) => Connection.GetServer(host, port);
+    
+    public class Alarm{
+      public string Id { get; set; }
+      public int Status { get; set; }
+    }
     [HttpGet]
-    public async Task<Dictionary<string, int>> Get()
+    public async Task<List<Alarm>> Get()
     {
       IDatabase cache = GetDatabase();
 
       var currStateJson = await cache.StringGetAsync("CurrentState");
-      var currState = JsonSerializer.Deserialize<Dictionary<string, int>>(currStateJson);
+      var currStateDic = JsonSerializer.Deserialize<Dictionary<string, int>>(currStateJson);
+      var currState = currStateDic.Keys.ToList().Select(k => 
+        new Alarm {Id = k, Status = currStateDic[k]}
+        ).ToList();
 
       return currState;
+    }
+
+    [HttpPost]
+    public async Task SendMessage(string message)
+    {
+      var msg = new Message
+      {
+        Time = DateTime.Now,
+        Body = message
+      };
+      await _alarmHub.Clients.All.ReceiveMessage( msg );
     }
   }
 }

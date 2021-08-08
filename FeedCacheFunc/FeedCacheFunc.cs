@@ -24,7 +24,7 @@ namespace UGL.PoC
     {
       return new Lazy<ConnectionMultiplexer>(() =>
       {
-        string cacheConnection = "127.0.0.1:6379";
+        var cacheConnection = Environment.GetEnvironmentVariable("RedisConnection");
         return ConnectionMultiplexer.Connect(cacheConnection);
       });
     }
@@ -59,33 +59,31 @@ namespace UGL.PoC
         prevDict = JsonSerializer.Deserialize<Dictionary<string, int>>(prevCache);
       }
 
-      var httpClient = new HttpClient();
-      var trainUrl = $"http://integrasim.ugllimited.com/alarmsjournal?area=VIEW&prev_trans_id={counter}";
-      var response = await httpClient.GetStringAsync(trainUrl);
+      var trainAPIHttpClient = new HttpClient();
+      var trainUrl = Environment.GetEnvironmentVariable("TrainUrl");
+      var trainAlarmsUrl = $"{trainUrl}/alarmsjournal?area=VIEW&prev_trans_id={counter}";
+      var response = await trainAPIHttpClient.GetStringAsync(trainAlarmsUrl);
       var res = JsonSerializer.Deserialize<Response>(response);
       
-      var currState = res.src[0].alarm_journal.ToDictionary(
-        a => (a.alarmid * 10000 + a.tid).ToString(),
-        a => a.status
-      );
+      var currState = new Dictionary<string, int>();
+        int status = res.src[0].alarm_journal[0].status;
 
-      var delta = new Dictionary<string, Change>();
-      if (prevDict != null)
-      {
-        foreach (var k in currState.Keys)
-        {
-          if (prevDict[k] != currState[k])
-          {
-            delta.Add(k, new Change {PrevValue = prevDict[k], CurrValue = currState[k]});
-          }
-        }
-      }
-
+      res.src[0].alarm_journal.ToList().ForEach(alarm => {
+        string key = alarm.alarmid.ToString();
+        int status = alarm.status;
+        currState[key] = status;
+      });
+      
       var currStateJson = JsonSerializer.Serialize(currState);
       await cache.StringSetAsync("CurrentState", currStateJson);
       await cache.StringSetAsync(res.src[0].cfg_hash, currStateJson);
       await cache.StringSetAsync("Counter", res.src[0].last_trans_id);
       Console.WriteLine($"cfg_hash: {res.src[0].cfg_hash} starting_counter: {counter}, Last_counter:{res.src[0].last_trans_id}");
+    
+      var backendAPIHttpClient = new HttpClient();
+      var backendUrl = Environment.GetEnvironmentVariable("BackendApiURL");
+      var backendMessageUrl = $"{backendUrl}/Alarm?message=alarmchange";
+      await backendAPIHttpClient.PostAsync(backendMessageUrl, null);
     }
   }
 }
