@@ -58,11 +58,11 @@ namespace AlarmApi.Controllers
       public int Status { get; set; }
     }
     [HttpGet]
-    public async Task<List<Alarm>> Get()
+    public async Task<List<Alarm>> Get(string trainName)
     {
       IDatabase cache = GetDatabase();
 
-      var currStateJson = await cache.StringGetAsync("CurrentState");
+      var currStateJson = await cache.StringGetAsync($"CurrentState_{trainName}");
       var currStateDic = JsonSerializer.Deserialize<Dictionary<string, int>>(currStateJson);
       var currState = currStateDic.Keys.ToList().Select(k => 
         new Alarm {Id = k, Status = currStateDic[k]}
@@ -72,14 +72,11 @@ namespace AlarmApi.Controllers
     }
 
     [HttpPost]
-    public async Task SendMessage(string message)
+    public async Task SendMessage([FromBody]Message message)
     {
-      var msg = new Message
-      {
-        Time = DateTime.Now,
-        Body = message
-      };
-      await _alarmHub.Clients.All.ReceiveMessage( msg );
+      Console.WriteLine($"Sending message: {message.Body} at {message.Time}");
+
+      await _alarmHub.Clients.All.ReceiveMessage( message );
     }
   }
 }
