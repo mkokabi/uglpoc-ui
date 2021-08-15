@@ -1,0 +1,5 @@
+{
+  "appService.preDeployTask": "publish-release",
+  "appService.deploySubpath": "bin/Release/net5.0/publish",
+  "appService.defaultWebAppToDeploy": "/subscriptions/85baeaf3-631c-41f7-a626-4b50ca0d5883/resourceGroups/rg-integra-poc-001/providers/Microsoft.Web/sites/uglpocbackend"
+}
